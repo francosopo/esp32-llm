@@ -1,8 +1,8 @@
 /* Inference for Llama-2 Transformer model in pure C */
 /**
  * Original author of this:
- * https://github.com/karpathy/llama2.c 
- * 
+ * https://github.com/karpathy/llama2.c
+ *
  * Slight modifications added to make it ESP32 friendly
  */
 
@@ -940,7 +940,7 @@ int sample_topp(v4sf *probabilities, int n, v4sf topp, ProbIndex *probindex, v4s
     return probindex[last_idx].index; // in case of rounding errors
 }
 
-void build_sampler(Sampler *sampler, int vocab_size, v4sf temperature, v4sf topp, unsigned long long rng_seed)
+void build_sampler(Sampler *sampler, int vocab_size, float temperature, float topp, unsigned long long rng_seed)
 {
     sampler->vocab_size = vocab_size;
     sampler->temperature = temperature;
@@ -949,6 +949,7 @@ void build_sampler(Sampler *sampler, int vocab_size, v4sf temperature, v4sf topp
     // buffer only used with nucleus sampling; may not need but it's ~small
     sampler->probindex = malloc(sampler->vocab_size * sizeof(ProbIndex));
     ESP_LOGI(TAG, "Sampler Successfully built");
+    //printf("temp: %f, topp: %f\n", temperature, topp);
 }
 
 void free_sampler(Sampler *sampler)
@@ -973,34 +974,35 @@ int sample(Sampler *sampler, v4sf *logits)
 {
     // sample the token given the logits and some hyperparameters
     int next;
-    if (sampler->temperature == 0.0f)
-    {
+    //printf("temp: %f, topp: %f\n", sampler->temperature, sampler->topp);
+    // if (sampler->temperature == 0.0f)
+    // {
         // greedy argmax sampling: take the token with the highest probability
         next = sample_argmax(logits, sampler->vocab_size);
-    }
-    else
-    {
-        // apply the temperature to the logits
-        for (int q = 0; q < sampler->vocab_size; q++)
-        {
-            logits[q] /= sampler->temperature;
-        }
-        // apply softmax to the logits to get the probabilities for next token
-        softmax(logits, sampler->vocab_size);
-        // flip a (v4sf) coin (this is our source of entropy for sampling)
-        v4sf coin = random_f32(&sampler->rng_state);
-        // we sample from this distribution to get the next token
-        if (sampler->topp <= 0 || sampler->topp >= 1)
-        {
-            // simply sample from the predicted probability distribution
-            next = sample_mult(logits, sampler->vocab_size, coin);
-        }
-        else
-        {
-            // top-p (nucleus) sampling, clamping the least likely tokens to zero
-            next = sample_topp(logits, sampler->vocab_size, sampler->topp, sampler->probindex, coin);
-        }
-    }
+    // }
+    // else
+    // {
+    //     // apply the temperature to the logits
+    //     for (int q = 0; q < sampler->vocab_size; q++)
+    //     {
+    //         logits[q] /= sampler->temperature;
+    //     }
+    //     // apply softmax to the logits to get the probabilities for next token
+    //     softmax(logits, sampler->vocab_size);
+    //     // flip a (v4sf) coin (this is our source of entropy for sampling)
+    //     v4sf coin = random_f32(&sampler->rng_state);
+    //     // we sample from this distribution to get the next token
+    //     if (sampler->topp <= 0 || sampler->topp >= 1)
+    //     {
+    //         // simply sample from the predicted probability distribution
+    //         next = sample_mult(logits, sampler->vocab_size, coin);
+    //     }
+    //     else
+    //     {
+    //         // top-p (nucleus) sampling, clamping the least likely tokens to zero
+    //         next = sample_topp(logits, sampler->vocab_size, sampler->topp, sampler->probindex, coin);
+    //     }
+    // }
     return next;
 }
 
@@ -1018,7 +1020,7 @@ long time_in_ms()
 // ----------------------------------------------------------------------------
 // generation loop
 
-void generate(Transformer *transformer, Tokenizer *tokenizer, Sampler *sampler, char *prompt, int steps, generated_complete_cb cb_done)
+void generate(Transformer *transformer, Tokenizer *tokenizer, Sampler *sampler, char *prompt, int steps, generated_complete_cb cb_done, token_flow_cb cb_token)
 {
     char *empty_prompt = "";
     if (prompt == NULL)
@@ -1054,6 +1056,11 @@ void generate(Transformer *transformer, Tokenizer *tokenizer, Sampler *sampler, 
         }
         else
         {
+            // print all logits for debugging
+            // for (int i = 0; i < tokenizer->vocab_size; i++) {
+            //     printf("logit [%d] %f \n", i, logits[i]);
+            // }
+            // printf("\n");
             // otherwise sample the next token from the logits
             next = sample(sampler, logits);
         }
@@ -1068,6 +1075,7 @@ void generate(Transformer *transformer, Tokenizer *tokenizer, Sampler *sampler, 
         // print the token as string, decode it with the Tokenizer object
         char *piece = decode(tokenizer, token, next);
         safe_printf(piece); // same as printf("%s", piece), but skips "unsafe" bytes
+        cb_token(piece);
         fflush(stdout);
         token = next;
 
