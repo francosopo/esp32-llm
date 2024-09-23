@@ -3,8 +3,8 @@
 
 /**
  * Original author of this:
- * https://github.com/karpathy/llama2.c 
- * 
+ * https://github.com/karpathy/llama2.c
+ *
  * Slight modifications added to make it ESP32 friendly
  */
 
@@ -104,14 +104,13 @@ typedef struct {
     size_t file_size; // size of the checkpoint file in bytes
 } Transformer;
 
-
-
 typedef void (*generated_complete_cb)(float tokens_ps);
+typedef void (*token_flow_cb)(char* token);
 
 void build_transformer(Transformer *t, char* checkpoint_path);
 void build_tokenizer(Tokenizer* t, char* tokenizer_path, int vocab_size);
 void build_sampler(Sampler* sampler, int vocab_size, float temperature, float topp, unsigned long long rng_seed);
-void generate(Transformer *transformer, Tokenizer *tokenizer, Sampler *sampler, char *prompt, int steps, generated_complete_cb cb_done);
+void generate(Transformer *transformer, Tokenizer *tokenizer, Sampler *sampler, char *prompt, int steps, generated_complete_cb cb_done, token_flow_cb cb_token);
 void free_sampler(Sampler* sampler);
 void free_transformer(Transformer* t);
 void free_tokenizer(Tokenizer* t);

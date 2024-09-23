@@ -5,36 +5,51 @@
 #include "esp_err.h"
 #include "esp_log.h"
 #include <time.h>
+#include <driver/i2c.h>
+#include <string>
+extern "C"
+{
+#include "llama.h"
 #include "llm.h"
 #include <u8g2.h>
 #include "u8g2_esp32_hal.h"
-#include <driver/i2c.h>
-#include <string.h>
-#include "llama.h"
+}
+#define XPOWERS_CHIP_AXP2101
+#include "XPowersLib.h"
 
 static const char *TAG = "MAIN";
 u8g2_t u8g2;
+static XPowersPMU power;
 
-#define PIN_SDA 8
-#define PIN_SCL 9
+#define PIN_SDA (gpio_num_t)7
+#define PIN_SCL (gpio_num_t)6
 #define OLED_I2C_ADDRESS 0x78
 
 /**
  * @brief Configure SSD1306 display
  * Uses I2C connection
  */
-void init_display(void)
+int init_display(void)
 {
+    if (power.begin(I2C_NUM_0, AXP2101_SLAVE_ADDRESS, PIN_SDA, PIN_SCL)) {
+        ESP_LOGI(TAG, "Init PMU SUCCESS!");
+    } else {
+        ESP_LOGE(TAG, "Init PMU FAILED!");
+        return false;
+    }
+
+    // TS Pin detection must be disable, otherwise it cannot be charged
+    power.disableTSPinMeasure();
+
     u8g2_esp32_hal_t u8g2_esp32_hal = U8G2_ESP32_HAL_DEFAULT;
     u8g2_esp32_hal.bus.i2c.sda = PIN_SDA;
     u8g2_esp32_hal.bus.i2c.scl = PIN_SCL;
     u8g2_esp32_hal_init(u8g2_esp32_hal);
     u8g2_Setup_ssd1306_i2c_128x64_noname_f(
-        &u8g2, U8G2_R0,
+        &u8g2, U8G2_R2,
         // u8x8_byte_sw_i2c,
         u8g2_esp32_i2c_byte_cb,
         u8g2_esp32_gpio_and_delay_cb); // init u8g2 structure
-    // 0x3c
     u8x8_SetI2CAddress(&u8g2.u8x8, OLED_I2C_ADDRESS);
     u8g2_InitDisplay(&u8g2);     // send init sequence to the display, display is in
                                  // sleep mode after this,
@@ -43,11 +58,12 @@ void init_display(void)
     u8g2_SetFont(&u8g2, u8g2_font_ncenB08_tr);
     u8g2_SendBuffer(&u8g2);
     ESP_LOGI(TAG, "Display initialized");
+    return 0;
 }
 
 /**
  * @brief intializes SPIFFS storage
- * 
+ *
  */
 void init_storage(void)
 {
@@ -93,7 +109,7 @@ void init_storage(void)
 
 /**
  * @brief Outputs to display
- * 
+ *
  * @param text The text to output
  */
 void write_display(char *text)
@@ -105,27 +121,59 @@ void write_display(char *text)
 
 /**
  * @brief Callbacks once generation is done
- * 
+ *
  * @param tk_s The number of tokens per second generated
  */
 void generate_complete_cb(float tk_s)
 {
     char buffer[50];
     sprintf(buffer, "%.2f tok/s", tk_s);
-    write_display(&buffer);
+    write_display(buffer);
+}
+
+/**
+ * @brief Callbacks for token flow
+ *
+ * @param tokens The tokens generated
+ */
+void output_cb(char* token)
+{
+    // buffer one row
+    // use u8g2 print
+    static std::string buffer;
+    static int buf_pos = 0;
+    static int row = 0;
+    buffer += token;
+    buf_pos += strlen(token);
+
+    if (buf_pos > 20)
+    {
+        u8g2_DrawStr(&u8g2, 0, 10 + row * 10, buffer.c_str());
+        u8g2_SendBuffer(&u8g2);
+        row++;
+        buf_pos = 0;
+        buffer.clear();
+    }
+
+    if (row > 5)
+    {
+        u8g2_ClearBuffer(&u8g2);
+        row = 0;
+    }
+
 }
 
 /**
  * @brief Draws a llama onscreen
- * 
+ *
  */
 void draw_llama(void)
 {
-    u8g2_DrawXBM(&u8g2, 0, 0, u8g2_GetDisplayWidth(&u8g2), u8g2_GetDisplayHeight(&u8g2), &llama_bmp);
+    u8g2_DrawXBM(&u8g2, 0, 0, u8g2_GetDisplayWidth(&u8g2), u8g2_GetDisplayHeight(&u8g2), llama_bmp);
     u8g2_SendBuffer(&u8g2);
 }
 
-void app_main(void)
+extern "C" void app_main()
 {
     init_display();
     write_display("Loading Model");
@@ -161,5 +209,6 @@ void app_main(void)
 
     // run!
     draw_llama();
-    generate(&transformer, &tokenizer, &sampler, prompt, steps, &generate_complete_cb);
+    u8g2_ClearBuffer(&u8g2);
+    generate(&transformer, &tokenizer, &sampler, prompt, steps, &generate_complete_cb, &output_cb);
 }
