@@ -29,7 +29,7 @@ static XPowersPMU power;
  * @brief Configure SSD1306 display
  * Uses I2C connection
  */
-int init_display(void)
+/*int init_display(void)
 {
     if (power.begin(I2C_NUM_0, AXP2101_SLAVE_ADDRESS, PIN_SDA, PIN_SCL)) {
         ESP_LOGI(TAG, "Init PMU SUCCESS!");
@@ -59,7 +59,7 @@ int init_display(void)
     u8g2_SendBuffer(&u8g2);
     ESP_LOGI(TAG, "Display initialized");
     return 0;
-}
+}*/
 
 /**
  * @brief intializes SPIFFS storage
@@ -112,31 +112,45 @@ void init_storage(void)
  *
  * @param text The text to output
  */
-void write_display(char *text)
+/*void write_display(char *text)
 {
     u8g2_ClearBuffer(&u8g2);
     u8g2_DrawStr(&u8g2, 0, u8g2_GetDisplayHeight(&u8g2) / 2, text);
     u8g2_SendBuffer(&u8g2);
 }
+*/
+/**
+ * @brief Callbacks once generation is done
+ *
+ * @param tk_s The number of tokens per second generated
+ */
+/*void generate_complete_cb(float tk_s)
+{
+    char buffer[50];
+    sprintf(buffer, "%.2f tok/s", tk_s);
+
+    write_display(buffer);
+}*/
 
 /**
  * @brief Callbacks once generation is done
  *
  * @param tk_s The number of tokens per second generated
  */
-void generate_complete_cb(float tk_s)
+void generate_complete_cb2(float tk_s)
 {
     char buffer[50];
     sprintf(buffer, "%.2f tok/s", tk_s);
-    write_display(buffer);
+
 }
+
 
 /**
  * @brief Callbacks for token flow
  *
  * @param tokens The tokens generated
  */
-void output_cb(char* token)
+/*void output_cb(char* token)
 {
     // buffer one row
     // use u8g2 print
@@ -161,22 +175,43 @@ void output_cb(char* token)
         row = 0;
     }
 
+}*/
+
+/**
+ * @brief Callbacks for token flow
+ *
+ * @param tokens The tokens generated
+ */
+void output_cb2(char* token)
+{
+    // buffer one row
+    // use u8g2 print
+    static std::string buffer;
+    static int buf_pos = 0;
+    static int row = 0;
+    buffer += token;
+    buf_pos += strlen(token);
+
+    printf("%s", buffer.c_str());
+    buffer.clear();
+
 }
+
 
 /**
  * @brief Draws a llama onscreen
  *
  */
-void draw_llama(void)
+/*void draw_llama(void)
 {
     u8g2_DrawXBM(&u8g2, 0, 0, u8g2_GetDisplayWidth(&u8g2), u8g2_GetDisplayHeight(&u8g2), llama_bmp);
     u8g2_SendBuffer(&u8g2);
-}
+}*/
 
 extern "C" void app_main()
 {
-    init_display();
-    write_display("Loading Model");
+    //init_display();
+    //write_display("Loading Model");
     init_storage();
 
     // default parameters
@@ -208,7 +243,7 @@ extern "C" void app_main()
     build_sampler(&sampler, transformer.config.vocab_size, temperature, topp, rng_seed);
 
     // run!
-    draw_llama();
-    u8g2_ClearBuffer(&u8g2);
-    generate(&transformer, &tokenizer, &sampler, prompt, steps, &generate_complete_cb, &output_cb);
+    //draw_llama();
+    //u8g2_ClearBuffer(&u8g2);
+    generate(&transformer, &tokenizer, &sampler, prompt, steps, &generate_complete_cb2, &output_cb2);
 }
